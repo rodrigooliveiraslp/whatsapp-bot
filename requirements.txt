@@ -1,0 +1,6 @@
+flask
+twilio
+pyairtable
+python-dotenv
+gunicorn
+requests
