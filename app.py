@@ -1,3 +1,4 @@
+# app.py
 import os
 import re
 import unicodedata
@@ -24,14 +25,13 @@ app = Flask(__name__)
 # Sessões em memória
 sessions = {}
 
-# Serviços válidos (sempre em minúsculo e sem acento)
+# Serviços válidos
 SERVICES = ["corte", "escova", "coloracao", "mechas", "progressiva", "manicure", "pedicure"]
 
-# Saudações aceitas
+# Saudações
 GREETINGS = ["oi", "ola", "olá", "bom dia", "boa tarde", "boa noite", "hello", "oi kelly", "kelly"]
 
 def normalize(txt):
-    """Remove acentos e deixa em minúsculo para comparação"""
     if txt is None:
         return ""
     txt = txt.strip().lower()
@@ -41,9 +41,9 @@ def normalize(txt):
     )
 
 def is_greeting(text_norm):
-    """Detecta se o texto normalizado contém uma saudação"""
     for g in GREETINGS:
-        if normalize(g) in text_norm:
+        g_norm = normalize(g)
+        if g_norm in text_norm:
             return True
     return False
 
@@ -91,45 +91,55 @@ def whatsapp_webhook():
     body_raw = (request.values.get("Body") or "").strip()
     body_norm = normalize(body_raw)
 
+    # pega sessão atual
+    sess = sessions.get(phone, {"state": "menu", "data": {}})
+    state = sess["state"]
+
+    # DEBUG LOG
+    print("📩 NOVA MENSAGEM")
+    print(f"De: {phone}")
+    print(f"Texto bruto: {body_raw}")
+    print(f"Texto normalizado: {body_norm}")
+    print(f"Estado atual: {state}")
+
     resp = MessagingResponse()
     reply = ""
 
-    # Se for saudação ou "menu" — sempre mostra o menu e reseta a sessão
+    # Se for saudação ou "menu"
     if body_norm == "menu" or is_greeting(body_norm):
         sessions[phone] = {"state": "menu", "data": {}}
         reply = (
             "🌸 *Seja bem-vinda ao Studio Kelly d’Paula* 🌸\n\n"
             "Escolha uma opção:\n"
             "1️⃣ *Agendamento*\n"
-            		"2️⃣ *Agendamento com atendente*\n"
-            		"3️⃣ *Ver minha agenda*\n"
-            		"4️⃣ *Manicure e Pedicure*\n\n"
-            		"Responda com o número (ex: 1) ou com a palavra."
+            "2️⃣ *Agendamento com atendente*\n"
+            "3️⃣ *Ver minha agenda*\n"
+            "4️⃣ *Manicure e Pedicure*\n\n"
+            "Responda com o número (ex: 1) ou com a palavra."
         )
-        resp.message(reply)
-        return str(resp)
+        state = "menu"
 
-    # Pega sessão atual (se não existir, vai para menu)
-    sess = sessions.get(phone, {"state": "menu", "data": {}})
-    state = sess["state"]
-
-    # FLUXO PRINCIPAL
-    if state == "menu":
+    elif state == "menu":
         if body_norm == "1" or body_norm.startswith("agend"):
             sess = {"state": "ask_service", "data": {"phone": phone}}
+            sessions[phone] = sess
             reply = (
                 "✨ *Agendamento* ✨\n\n"
                 "Serviços disponíveis:\n- Corte\n- Escova\n- Coloração\n- Progressiva\n\n"
                 "Digite o nome do serviço que deseja (ex: Corte)."
             )
+            state = "ask_service"
+
         elif body_norm == "2" or "atendente" in body_norm:
             reply = "💁 Aguarde só um instante, uma atendente irá te responder em breve."
+
         elif body_norm == "3" or "agenda" in body_norm:
             if table is None:
                 reply = "Airtable não está configurado."
             else:
+                formula = f"{{Phone}} = '{phone}'"
                 try:
-                    records = table.all(formula=f"{{Phone}} = '{phone}'")
+                    records = table.all(formula=formula)
                     if not records:
                         reply = "📅 Você não tem agendamentos."
                     else:
@@ -143,42 +153,28 @@ def whatsapp_webhook():
                         reply = "\n".join(lines)
                 except Exception as e:
                     reply = f"Erro ao buscar agenda: {e}"
+
         elif body_norm == "4" or "manicure" in body_norm:
             sess = {"state": "ask_manicure_date", "data": {"phone": phone, "service": "Manicure/Pedicure"}}
+            sessions[phone] = sess
             reply = "💅 *Manicure e Pedicure* 💅\n\nInforme a data e horário (dd/mm/aa hh:mm)."
-        elif body_norm in SERVICES:
-            sess = {"state": "ask_date", "data": {"phone": phone, "service": body_raw.strip().title()}}
-            reply = "Ótimo! Informe a data e horário no formato dd/mm/aa hh:mm."
+            state = "ask_manicure_date"
+
         else:
             reply = "❌ Opção inválida. Digite *menu* para ver novamente."
-        sessions[phone] = sess
 
     elif state == "ask_service":
         chosen = normalize(body_raw)
         if chosen not in SERVICES:
             reply = ("❌ Serviço não reconhecido.\n"
-                     "Disponíveis:\n- " + "\n- ".join([s.title() for s in SERVICES]))
+                     "Disponíveis:\n- " + "\n- ".join([s.title() for s in SERVICES]) +
+                     "\n\nPor favor, digite exatamente um destes nomes ou digite *menu* para voltar.")
         else:
             sess["data"]["service"] = body_raw.strip().title()
-            if "color" in chosen or "colora" in chosen:
-                sess["state"] = "ask_color_current"
-                reply = "Qual a cor atual do cabelo?"
-            else:
-                sess["state"] = "ask_date"
-                reply = "Ótimo! Agora informe a data e horário no formato dd/mm/aa hh:mm."
-        sessions[phone] = sess
-
-    elif state == "ask_color_current":
-        sess["data"]["color_current"] = body_raw.strip().title()
-        sess["state"] = "ask_color_desired"
-        reply = "Qual a cor desejada?"
-        sessions[phone] = sess
-
-    elif state == "ask_color_desired":
-        sess["data"]["color_desired"] = body_raw.strip().title()
-        sess["state"] = "ask_date"
-        reply = "Perfeito. Agora informe a data e horário (dd/mm/aa hh:mm)."
-        sessions[phone] = sess
+            sess["state"] = "ask_date"
+            sessions[phone] = sess
+            reply = "Ótimo! Agora informe a data e horário no formato dd/mm/aa hh:mm."
+            state = "ask_date"
 
     elif state in ["ask_date", "ask_manicure_date"]:
         dt = parse_datetime_text(body_raw)
@@ -191,19 +187,15 @@ def whatsapp_webhook():
             else:
                 sess["data"]["datetime"] = dt
                 sess["state"] = "confirm"
-                summary = [
-                    "📌 Confirme seu agendamento:",
-                    f"📱 Telefone: {phone}",
-                    f"💇 Serviço: {sess['data'].get('service', 'Serviço')}",
-                    f"📅 Data/Hora: {dt.strftime('%d/%m/%Y %H:%M')}",
-                ]
-                if "color_current" in sess["data"]:
-                    summary.append(f"🎨 Cor atual: {sess['data']['color_current']}")
-                if "color_desired" in sess["data"]:
-                    summary.append(f"🎯 Cor desejada: {sess['data']['color_desired']}")
-                summary.append("\nResponda *SIM* para confirmar ou *NÃO* para cancelar.")
-                reply = "\n".join(summary)
-        sessions[phone] = sess
+                sessions[phone] = sess
+                reply = (
+                    f"📌 Confirme seu agendamento:\n"
+                    f"📱 Telefone: {phone}\n"
+                    f"💇 Serviço: {sess['data'].get('service','')}\n"
+                    f"📅 Data/Hora: {dt.strftime('%d/%m/%Y %H:%M')}\n\n"
+                    "Responda *SIM* para confirmar ou *NÃO* para cancelar."
+                )
+                state = "confirm"
 
     elif state == "confirm":
         if body_norm in ["sim", "s", "confirmar"]:
@@ -212,12 +204,13 @@ def whatsapp_webhook():
                 "Phone": phone,
                 "Service": data.get("service", ""),
                 "DateTime": data.get("datetime").isoformat() if data.get("datetime") else "",
-                "ColorCurrent": data.get("color_current", ""),
-                "ColorDesired": data.get("color_desired", ""),
                 "Status": "Agendado"
             }
             rec_id, err = save_appointment_to_airtable(record)
-            reply = f"✅ Agendamento confirmado!\nCódigo: {rec_id}\nObrigada pela preferência 💖" if not err else f"❌ Erro ao salvar: {err}"
+            if err:
+                reply = f"❌ Erro ao salvar: {err}"
+            else:
+                reply = f"✅ Agendamento confirmado!\nCódigo: {rec_id}\nObrigada pela preferência 💖"
             sessions.pop(phone, None)
         else:
             reply = "Agendamento cancelado. Digite *menu* para voltar."
@@ -226,10 +219,15 @@ def whatsapp_webhook():
     else:
         reply = "Digite *menu* para começar."
 
+    # DEBUG LOG DEPOIS DE PROCESSAR
+    print(f"Novo estado: {state}")
+    print(f"Resposta enviada: {reply}\n")
+
     resp.message(reply)
     return str(resp)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+
 
 
