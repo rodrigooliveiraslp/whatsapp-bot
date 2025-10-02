@@ -24,10 +24,10 @@ app = Flask(__name__)
 # Sessões em memória
 sessions = {}
 
-# Serviços válidos
+# Serviços válidos (normalizados)
 SERVICES = ["corte", "escova", "coloracao", "mechas", "progressiva", "manicure", "pedicure"]
 
-# Saudações
+# Saudações aceitas
 GREETINGS = ["oi", "ola", "olá", "bom dia", "boa tarde", "boa noite", "hello", "oi kelly", "kelly"]
 
 # ==========================
@@ -87,7 +87,7 @@ def save_appointment_to_airtable(record):
         return None, str(e)
 
 # ==========================
-# Rota de teste
+# Rota de teste (navegador)
 # ==========================
 @app.route("/", methods=["GET"])
 def home():
@@ -178,13 +178,18 @@ def whatsapp_webhook():
     # ======== AGENDAMENTO (SERVIÇOS) ========
     elif state == "ask_service":
         if body_norm in SERVICES:
-            sess["data"]["service"] = body_raw
+            # salva bonito
+            sess["data"]["service"] = body_raw.strip().title()
             sess["state"] = "ask_date"
             sessions[phone] = sess
-            reply = f"📅 Você escolheu *{body_raw}*.\nInforme a data e horário (dd/mm/aa hh:mm)."
+            reply = f"📅 Você escolheu *{body_raw.strip().title()}*.\nInforme a data e horário (dd/mm/aa hh:mm)."
             state = "ask_date"
         else:
-            reply = "❌ Serviço não reconhecido. Digite um dos serviços listados ou *menu*."
+            reply = (
+                "❌ Serviço não reconhecido.\n\n"
+                "Disponíveis:\n- Corte\n- Escova\n- Coloração\n- Mechas\n- Progressiva\n\n"
+                "Digite exatamente como aparece acima ou *menu* para voltar."
+            )
 
     elif state == "ask_date":
         dt = parse_datetime_text(body_raw)
