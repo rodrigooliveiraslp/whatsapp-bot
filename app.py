@@ -1,11 +1,15 @@
 import os
 import re
 import unicodedata
+import logging
 from datetime import datetime, time
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 from pyairtable import Table
 from dotenv import load_dotenv
+
+# Ativar logs detalhados
+logging.basicConfig(level=logging.DEBUG)
 
 load_dotenv()
 
@@ -85,6 +89,7 @@ def save_appointment_to_airtable(record):
 # ==========================
 @app.route("/", methods=["GET"])
 def home():
+    logging.debug("Acessaram a rota raiz '/' no navegador.")
     return "🚀 Bot WhatsApp do Studio Kelly d’Paula está rodando!"
 
 # ==========================
@@ -105,11 +110,11 @@ def whatsapp_webhook():
     state = sess["state"]
 
     # Debug logs
-    print("📩 NOVA MENSAGEM")
-    print(f"De: {phone}")
-    print(f"Texto bruto: {body_raw}")
-    print(f"Texto normalizado: {body_norm}")
-    print(f"Estado atual: {state}")
+    logging.debug("📩 NOVA MENSAGEM")
+    logging.debug(f"De: {phone}")
+    logging.debug(f"Texto bruto: {body_raw}")
+    logging.debug(f"Texto normalizado: {body_norm}")
+    logging.debug(f"Estado atual: {state}")
 
     # ======== MENU PRINCIPAL ========
     if body_norm == "menu" or is_greeting(body_norm):
@@ -214,7 +219,7 @@ def whatsapp_webhook():
                     )
                 sessions[phone] = {"state": "menu", "data": {}}
 
-    # ======== FALLBACK: se nada bater ========
+    # ======== FALLBACK ========
     else:
         if body_raw:
             reply = f"Você disse: {body_raw}"
@@ -222,14 +227,15 @@ def whatsapp_webhook():
             reply = "Oi! Manda uma mensagem para começar 🚀"
 
     # Debug final
-    print(f"Novo estado: {state}")
-    print(f"Resposta enviada: {reply}\n")
+    logging.debug(f"Novo estado: {state}")
+    logging.debug(f"Resposta enviada: {reply}\n")
 
     resp.message(reply)
     return str(resp)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), debug=True)
+
 
 
 
