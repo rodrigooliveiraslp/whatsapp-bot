@@ -120,7 +120,7 @@ def whatsapp_webhook():
             "1️⃣ *Agendamento*\n"
             		"2️⃣ *Agendamento com atendente*\n"
             		"3️⃣ *Ver minha agenda*\n"
-           	 	"4️⃣ *Manicure e Pedicure*\n\n"
+            		"4️⃣ *Manicure e Pedicure*\n\n"
             		"Responda com o número (ex: 1) ou com a palavra."
         )
         state = "menu"
@@ -171,7 +171,7 @@ def whatsapp_webhook():
 
     # ======== AGENDAMENTO (SERVIÇOS) ========
     elif state == "ask_service":
-        if normalize(body_norm) in SERVICES:
+        if body_norm in SERVICES:
             sess["data"]["service"] = body_raw.strip().title()
             sess["state"] = "ask_date"
             sessions[phone] = sess
@@ -214,7 +214,7 @@ def whatsapp_webhook():
                     )
                 sessions[phone] = {"state": "menu", "data": {}}
 
-    # ======== FALLBACK: se nada bater, só ecoa ========
+    # ======== FALLBACK: se nada bater ========
     else:
         if body_raw:
             reply = f"Você disse: {body_raw}"
