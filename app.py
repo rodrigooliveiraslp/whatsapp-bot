@@ -88,7 +88,7 @@ def home():
     return "🚀 Bot WhatsApp do Studio Kelly d’Paula está rodando!"
 
 # ==========================
-# Rota WhatsApp
+# Rota WhatsApp principal
 # ==========================
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_webhook():
@@ -96,6 +96,9 @@ def whatsapp_webhook():
     phone = extract_phone_number(raw_from)
     body_raw = (request.values.get("Body") or "").strip()
     body_norm = normalize(body_raw)
+
+    resp = MessagingResponse()
+    reply = ""
 
     # Sessão do usuário
     sess = sessions.get(phone, {"state": "menu", "data": {}})
@@ -108,9 +111,6 @@ def whatsapp_webhook():
     print(f"Texto normalizado: {body_norm}")
     print(f"Estado atual: {state}")
 
-    resp = MessagingResponse()
-    reply = ""
-
     # ======== MENU PRINCIPAL ========
     if body_norm == "menu" or is_greeting(body_norm):
         sessions[phone] = {"state": "menu", "data": {}}
@@ -120,7 +120,7 @@ def whatsapp_webhook():
             "1️⃣ *Agendamento*\n"
             		"2️⃣ *Agendamento com atendente*\n"
             		"3️⃣ *Ver minha agenda*\n"
-            		"4️⃣ *Manicure e Pedicure*\n\n"
+           	 	"4️⃣ *Manicure e Pedicure*\n\n"
             		"Responda com o número (ex: 1) ou com a palavra."
         )
         state = "menu"
@@ -214,7 +214,14 @@ def whatsapp_webhook():
                     )
                 sessions[phone] = {"state": "menu", "data": {}}
 
-    # Debug depois do processamento
+    # ======== FALLBACK: se nada bater, só ecoa ========
+    else:
+        if body_raw:
+            reply = f"Você disse: {body_raw}"
+        else:
+            reply = "Oi! Manda uma mensagem para começar 🚀"
+
+    # Debug final
     print(f"Novo estado: {state}")
     print(f"Resposta enviada: {reply}\n")
 
@@ -222,8 +229,7 @@ def whatsapp_webhook():
     return str(resp)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
-
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), debug=True)
 
 
 
