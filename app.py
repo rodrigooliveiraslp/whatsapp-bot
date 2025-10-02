@@ -91,7 +91,7 @@ def save_appointment_to_airtable(record):
 # ==========================
 @app.route("/", methods=["GET"])
 def home():
-    return "🚀 Bot do WhatsApp está rodando!"
+    return "🚀 Bot WhatsApp do Studio Kelly d’Paula está rodando!"
 
 # ==========================
 # Rota WhatsApp
