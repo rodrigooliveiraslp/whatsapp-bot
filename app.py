@@ -24,7 +24,7 @@ app = Flask(__name__)
 # Sessões em memória
 sessions = {}
 
-# Serviços válidos (normalizados)
+# Serviços válidos
 SERVICES = ["corte", "escova", "coloracao", "mechas", "progressiva", "manicure", "pedicure"]
 
 # Saudações aceitas
@@ -43,16 +43,10 @@ def normalize(txt):
     )
 
 def is_greeting(text_norm):
-    for g in GREETINGS:
-        g_norm = normalize(g)
-        if g_norm in text_norm:
-            return True
-    return False
+    return any(normalize(g) in text_norm for g in GREETINGS)
 
 def extract_phone_number(raw_from):
     digits = re.sub(r'\D', '', raw_from or "")
-    if not digits.startswith("55"):
-        return "+" + digits
     return "+" + digits
 
 def parse_datetime_text(txt):
@@ -177,12 +171,11 @@ def whatsapp_webhook():
 
     # ======== AGENDAMENTO (SERVIÇOS) ========
     elif state == "ask_service":
-        if body_norm in SERVICES:
-            # salva bonito
+        if normalize(body_norm) in SERVICES:
             sess["data"]["service"] = body_raw.strip().title()
             sess["state"] = "ask_date"
             sessions[phone] = sess
-            reply = f"📅 Você escolheu *{body_raw.strip().title()}*.\nInforme a data e horário (dd/mm/aa hh:mm)."
+            reply = f"📅 Você escolheu *{sess['data']['service']}*.\nInforme a data e horário (dd/mm/aa hh:mm)."
             state = "ask_date"
         else:
             reply = (
@@ -202,7 +195,6 @@ def whatsapp_webhook():
             else:
                 sess["data"]["datetime"] = dt.strftime("%d/%m/%Y %H:%M")
                 sessions[phone] = sess
-                # Salvar no Airtable
                 record = {
                     "Phone": phone,
                     "Service": sess["data"]["service"],
@@ -231,6 +223,8 @@ def whatsapp_webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+
+
 
 
 
