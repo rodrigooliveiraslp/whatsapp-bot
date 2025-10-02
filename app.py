@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Config
+# Config Airtable
 AIRTABLE_API_KEY = os.getenv("AIRTABLE_API_KEY")
 AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID")
 AIRTABLE_TABLE_NAME = os.getenv("AIRTABLE_TABLE_NAME", "Appointments")
@@ -31,6 +31,9 @@ SERVICES = ["corte", "escova", "coloracao", "mechas", "progressiva", "manicure",
 # Saudações
 GREETINGS = ["oi", "ola", "olá", "bom dia", "boa tarde", "boa noite", "hello", "oi kelly", "kelly"]
 
+# ==========================
+# Funções auxiliares
+# ==========================
 def normalize(txt):
     if txt is None:
         return ""
@@ -84,6 +87,9 @@ def save_appointment_to_airtable(record):
     except Exception as e:
         return None, str(e)
 
+# ==========================
+# Rota WhatsApp
+# ==========================
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_webhook():
     raw_from = request.values.get("From", "")
@@ -91,11 +97,11 @@ def whatsapp_webhook():
     body_raw = (request.values.get("Body") or "").strip()
     body_norm = normalize(body_raw)
 
-    # pega sessão atual
+    # Sessão do usuário
     sess = sessions.get(phone, {"state": "menu", "data": {}})
     state = sess["state"]
 
-    # DEBUG LOG
+    # Debug logs
     print("📩 NOVA MENSAGEM")
     print(f"De: {phone}")
     print(f"Texto bruto: {body_raw}")
@@ -105,17 +111,17 @@ def whatsapp_webhook():
     resp = MessagingResponse()
     reply = ""
 
-    # Se for saudação ou "menu"
+    # ======== MENU PRINCIPAL ========
     if body_norm == "menu" or is_greeting(body_norm):
         sessions[phone] = {"state": "menu", "data": {}}
         reply = (
             "🌸 *Seja bem-vinda ao Studio Kelly d’Paula* 🌸\n\n"
             "Escolha uma opção:\n"
             "1️⃣ *Agendamento*\n"
-            "2️⃣ *Agendamento com atendente*\n"
-            "3️⃣ *Ver minha agenda*\n"
-            "4️⃣ *Manicure e Pedicure*\n\n"
-            "Responda com o número (ex: 1) ou com a palavra."
+            		"2️⃣ *Agendamento com atendente*\n"
+            		"3️⃣ *Ver minha agenda*\n"
+            		"4️⃣ *Manicure e Pedicure*\n\n"
+            		"Responda com o número (ex: 1) ou com a palavra."
         )
         state = "menu"
 
@@ -125,7 +131,7 @@ def whatsapp_webhook():
             sessions[phone] = sess
             reply = (
                 "✨ *Agendamento* ✨\n\n"
-                "Serviços disponíveis:\n- Corte\n- Escova\n- Coloração\n- Progressiva\n\n"
+                "Serviços disponíveis:\n- Corte\n- Escova\n- Coloração\n- Mechas\n- Progressiva\n\n"
                 "Digite o nome do serviço que deseja (ex: Corte)."
             )
             state = "ask_service"
@@ -163,63 +169,49 @@ def whatsapp_webhook():
         else:
             reply = "❌ Opção inválida. Digite *menu* para ver novamente."
 
+    # ======== AGENDAMENTO (SERVIÇOS) ========
     elif state == "ask_service":
-        chosen = normalize(body_raw)
-        if chosen not in SERVICES:
-            reply = ("❌ Serviço não reconhecido.\n"
-                     "Disponíveis:\n- " + "\n- ".join([s.title() for s in SERVICES]) +
-                     "\n\nPor favor, digite exatamente um destes nomes ou digite *menu* para voltar.")
-        else:
-            sess["data"]["service"] = body_raw.strip().title()
+        if body_norm in SERVICES:
+            sess["data"]["service"] = body_raw
             sess["state"] = "ask_date"
             sessions[phone] = sess
-            reply = "Ótimo! Agora informe a data e horário no formato dd/mm/aa hh:mm."
+            reply = f"📅 Você escolheu *{body_raw}*.\nInforme a data e horário (dd/mm/aa hh:mm)."
             state = "ask_date"
+        else:
+            reply = "❌ Serviço não reconhecido. Digite um dos serviços listados ou *menu*."
 
-    elif state in ["ask_date", "ask_manicure_date"]:
+    elif state == "ask_date":
         dt = parse_datetime_text(body_raw)
-        if dt is None:
-            reply = "❌ Formato inválido. Use dd/mm/aa hh:mm."
+        if not dt:
+            reply = "❌ Formato inválido. Use dd/mm/aa hh:mm (ex: 05/10/25 14:00)."
         else:
-            ok, msg_err = is_allowed_datetime(dt)
+            ok, msg = is_allowed_datetime(dt)
             if not ok:
-                reply = msg_err
+                reply = msg
             else:
-                sess["data"]["datetime"] = dt
-                sess["state"] = "confirm"
+                sess["data"]["datetime"] = dt.strftime("%d/%m/%Y %H:%M")
                 sessions[phone] = sess
-                reply = (
-                    f"📌 Confirme seu agendamento:\n"
-                    f"📱 Telefone: {phone}\n"
-                    f"💇 Serviço: {sess['data'].get('service','')}\n"
-                    f"📅 Data/Hora: {dt.strftime('%d/%m/%Y %H:%M')}\n\n"
-                    "Responda *SIM* para confirmar ou *NÃO* para cancelar."
-                )
-                state = "confirm"
+                # Salvar no Airtable
+                record = {
+                    "Phone": phone,
+                    "Service": sess["data"]["service"],
+                    "DateTime": sess["data"]["datetime"],
+                    "Status": "Pendente"
+                }
+                rec_id, err = save_appointment_to_airtable(record)
+                if err:
+                    reply = f"Erro ao salvar no Airtable: {err}"
+                else:
+                    reply = (
+                        f"✅ Agendamento confirmado!\n\n"
+                        f"📱 Telefone: {phone}\n"
+                        f"💇 Serviço: {sess['data']['service']}\n"
+                        f"📅 Data: {sess['data']['datetime']}\n\n"
+                        f"Para voltar ao menu digite *menu*."
+                    )
+                sessions[phone] = {"state": "menu", "data": {}}
 
-    elif state == "confirm":
-        if body_norm in ["sim", "s", "confirmar"]:
-            data = sess["data"]
-            record = {
-                "Phone": phone,
-                "Service": data.get("service", ""),
-                "DateTime": data.get("datetime").isoformat() if data.get("datetime") else "",
-                "Status": "Agendado"
-            }
-            rec_id, err = save_appointment_to_airtable(record)
-            if err:
-                reply = f"❌ Erro ao salvar: {err}"
-            else:
-                reply = f"✅ Agendamento confirmado!\nCódigo: {rec_id}\nObrigada pela preferência 💖"
-            sessions.pop(phone, None)
-        else:
-            reply = "Agendamento cancelado. Digite *menu* para voltar."
-            sessions.pop(phone, None)
-
-    else:
-        reply = "Digite *menu* para começar."
-
-    # DEBUG LOG DEPOIS DE PROCESSAR
+    # Debug depois do processamento
     print(f"Novo estado: {state}")
     print(f"Resposta enviada: {reply}\n")
 
@@ -228,6 +220,7 @@ def whatsapp_webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+
 
 
 
