@@ -1,4 +1,3 @@
-# app.py
 import os
 import re
 import unicodedata
@@ -86,6 +85,13 @@ def save_appointment_to_airtable(record):
         return created.get("id"), None
     except Exception as e:
         return None, str(e)
+
+# ==========================
+# Rota de teste
+# ==========================
+@app.route("/", methods=["GET"])
+def home():
+    return "🚀 Bot do WhatsApp está rodando!"
 
 # ==========================
 # Rota WhatsApp
@@ -220,6 +226,7 @@ def whatsapp_webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+
 
 
 
